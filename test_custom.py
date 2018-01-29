@@ -68,34 +68,34 @@ class SOMNetwork:
             distance = tf.sqrt(tf.reduce_sum(tf.square(self.x - self.w), axis=1))
         return tf.argmin(distance, axis=0)
 
-    # Test SOM Network
-    @staticmethod
-    def test_som_with_color_data(iterations=25000):
-        som_dim = 100
-        som = SOMNetwork(input_dim=3, dim=som_dim, dtype=tf.float64, sigma=3)
-        test_data = np.random.uniform(0, 1, (iterations, 3))
-        training_op, lr_summary, sigma_summary = som.training_op()
-        init = tf.global_variables_initializer()
-        writer = tf.summary.FileWriter('./logs/', tf.get_default_graph())
-        with tf.Session() as sess:
-            init.run()
-            img1 = tf.reshape(som.w, [som_dim,som_dim,-1]).eval()
-            plt.figure(1)
-            plt.subplot(121)
-            plt.imshow(img1)
-            start = time.time()
-            for i, color_data in enumerate(test_data):
-                if i % 100 == 0:
-                    print('iter:', i)
-                sess.run(training_op, feed_dict={som.x: color_data, som.n:i})
-            end = time.time()
-            print(end - start)
-            img2 = tf.reshape(som.w, [som_dim, som_dim, -1]).eval()
-            plt.subplot(122)
-            plt.imshow(img2)
-        writer.close()
-        plt.show()
+
+# Test SOM Network
+def test_som_with_color_data(iterations=25000):
+    som_dim = 100
+    som = SOMNetwork(input_dim=3, dim=som_dim, dtype=tf.float64, sigma=3)
+    test_data = np.random.uniform(0, 1, (iterations, 3))
+    training_op, lr_summary, sigma_summary = som.training_op()
+    init = tf.global_variables_initializer()
+    writer = tf.summary.FileWriter('./logs/', tf.get_default_graph())
+    with tf.Session() as sess:
+        init.run()
+        img1 = tf.reshape(som.w, [som_dim, som_dim, -1]).eval()
+        plt.figure(1)
+        plt.subplot(121)
+        plt.imshow(img1)
+        start = time.time()
+        for i, color_data in enumerate(test_data):
+            if i % 100 == 0:
+                print('iter:', i)
+            sess.run(training_op, feed_dict={som.x: color_data, som.n: i})
+        end = time.time()
+        print(end - start)
+        img2 = tf.reshape(som.w, [som_dim, som_dim, -1]).eval()
+        plt.subplot(122)
+        plt.imshow(img2)
+    writer.close()
+    plt.show()
 
 
 if __name__ == "__main__":
-    SOMNetwork.test_som_with_color_data(2000)
+    test_som_with_color_data(2000)
