@@ -1,101 +1,229 @@
-import time
-
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+from matplotlib import pyplot as plt
 
 
-class SOMNetwork:
+class SOM(object):
     """
-    SOM implementation
+    2-D Self-Organizing Map with Gaussian Neighbourhood function
+    and linearly decreasing learning rate.
     """
-    def __init__(self, input_dim, dim=10, sigma=None, learning_rate=0.1, tay2=1000, dtype=tf.float32):
-        if not sigma:
-            sigma = dim / 2
-        self.dtype = dtype
 
-        # constants
-        self.dim = tf.constant(dim, dtype=tf.int64)
-        self.learning_rate = tf.constant(learning_rate, dtype=dtype, name='learning_rate')
-        self.sigma = tf.constant(sigma, dtype=dtype, name='sigma')
-        self.tay1 = tf.constant(1000/np.log(sigma), dtype=dtype, name='tay1')
-        self.minsigma = tf.constant(sigma * np.exp(-1000/(1000/np.log(sigma))), dtype=dtype, name='min_sigma')
-        self.tay2 = tf.constant(tay2, dtype=dtype, name='tay2')
+    # To check if the SOM has been trained
+    _trained = False
 
-        # input vector
-        self.x = tf.placeholder(shape=[input_dim], dtype=dtype, name='input')
+    def __init__(self, m, n, dim, n_iterations=100, alpha=None, sigma=None):
+        """
+        Initializes all necessary components of the TensorFlow
+        Graph.
 
-        # iteration number
-        self.n = tf.placeholder(dtype=dtype, name='iteration')
+        m X n are the dimensions of the SOM. 'n_iterations' should
+        should be an integer denoting the number of iterations undergone
+        while training.
+        'dim' is the dimensionality of the training inputs.
+        'alpha' is a number denoting the initial time(iteration no)-based
+        learning rate. Default value is 0.3
+        'sigma' is the the initial neighbourhood value, denoting
+        the radius of influence of the BMU while training. By default, its
+        taken to be half of max(m, n).
+        """
 
-        # variables
-        self.w = tf.Variable(tf.random_uniform([dim*dim, input_dim], minval=-1, maxval=1, dtype=dtype),
-                             dtype=dtype, name='weights')
+        # Assign required variables first
+        self._m = m
+        self._n = n
+        if alpha is None:
+            alpha = 0.3
+        else:
+            alpha = float(alpha)
+        if sigma is None:
+            sigma = max(m, n) / 2.0
+        else:
+            sigma = float(sigma)
+        self._n_iterations = abs(int(n_iterations))
 
-        # helper
-        self.positions = tf.where(tf.fill([dim, dim], True))
+        # INITIALIZE GRAPH
+        self._graph = tf.Graph()
 
-    def feed(self, input_data):
-        init = tf.global_variables_initializer()
-        with tf.Session() as sess:
-            init.run()
-            win_index = sess.run(self.__competition(), feed_dict={self.x: input_data})
-            win_index_2d = np.array([win_index//self.dim.eval(), win_index-win_index//self.dim.eval()*self.dim.eval()])
-        return win_index_2d
+        # POPULATE GRAPH WITH NECESSARY COMPONENTS
+        with self._graph.as_default():
 
-    def training_op(self):
-        win_index = self.__competition('train_')
+            # VARIABLES AND CONSTANT OPS FOR DATA STORAGE
 
-        with tf.name_scope('cooperation') as scope:
-            coop_dist = tf.sqrt(tf.reduce_sum(tf.square(tf.cast(self.positions -
-                [win_index//self.dim, win_index-win_index//self.dim*self.dim],
-                dtype=self.dtype)), axis=1))
-            sigma = tf.cond(self.n > 1000, lambda: self.minsigma, lambda: self.sigma * tf.exp(-self.n/self.tay1))
-            sigma_summary = tf.summary.scalar('Sigma', sigma)
-            tnh = tf.exp(-tf.square(coop_dist) / (2 * tf.square(sigma)))  # topological neighbourhood
+            # Randomly initialized weightage vectors for all neurons,
+            # stored together as a matrix Variable of size [m*n, dim]
+            self._weightage_vects = tf.Variable(tf.random_normal([m * n, dim]))
 
-        with tf.name_scope('adaptation') as scope:
-            lr = self.learning_rate * tf.exp(-self.n/self.tay2)
-            minlr = tf.constant(0.01, dtype=self.dtype, name='min_learning_rate')
-            lr = tf.cond(lr <= minlr, lambda: minlr, lambda: lr)
-            lr_summary = tf.summary.scalar('Learning rate', lr)
-            delta = tf.transpose(lr * tnh * tf.transpose(self.x - self.w))
-            training_op = tf.assign(self.w, self.w + delta)
-        return training_op, lr_summary, sigma_summary
+            # Matrix of size [m*n, 2] for SOM grid locations
+            # of neurons
+            self._location_vects = tf.constant(np.array(
+                    list(self._neuron_locations(m, n))))
 
-    def __competition(self, info=''):
-        with tf.name_scope(info+'competition') as scope:
-            distance = tf.sqrt(tf.reduce_sum(tf.square(self.x - self.w), axis=1))
-        return tf.argmin(distance, axis=0)
+            # PLACEHOLDERS FOR TRAINING INPUTS
+            # We need to assign them as attributes to self, since they
+            # will be fed in during training
 
-    # Test SOM Network
-    @staticmethod
-    def test_som_with_color_data(iterations=25000):
-        som_dim = 100
-        som = SOMNetwork(input_dim=3, dim=som_dim, dtype=tf.float64, sigma=3)
-        test_data = np.random.uniform(0, 1, (iterations, 3))
-        training_op, lr_summary, sigma_summary = som.training_op()
-        init = tf.global_variables_initializer()
-        writer = tf.summary.FileWriter('./logs/', tf.get_default_graph())
-        with tf.Session() as sess:
-            init.run()
-            img1 = tf.reshape(som.w, [som_dim,som_dim,-1]).eval()
-            plt.figure(1)
-            plt.subplot(121)
-            plt.imshow(img1)
-            start = time.time()
-            for i, color_data in enumerate(test_data):
-                if i % 100 == 0:
-                    print('iter:', i)
-                sess.run(training_op, feed_dict={som.x: color_data, som.n:i})
-            end = time.time()
-            print(end - start)
-            img2 = tf.reshape(som.w, [som_dim, som_dim, -1]).eval()
-            plt.subplot(122)
-            plt.imshow(img2)
-        writer.close()
-        plt.show()
+            # The training vector
+            self._vect_input = tf.placeholder("float", [dim])
+            # Iteration number
+            self._iter_input = tf.placeholder("float")
+
+            # CONSTRUCT TRAINING OP PIECE BY PIECE
+            # Only the final, 'root' training op needs to be assigned as
+            # an attribute to self, since all the rest will be executed
+            # automatically during training
+
+            # To compute the Best Matching Unit given a vector
+            # Basically calculates the Euclidean distance between every
+            # neuron's weightage vector and the input, and returns the
+            # index of the neuron which gives the least value
+            bmu_index = tf.argmin(tf.sqrt(tf.reduce_sum(
+                    tf.pow(tf.subtract(self._weightage_vects, tf.stack(
+                        [self._vect_input for _ in range(m * n)])), 2), 1)), 0)
+
+            # This will extract the location of the BMU based on the BMU's
+            # index
+            slice_input = tf.pad(tf.reshape(bmu_index, [1]), np.array([[0, 1]]))
+            bmu_loc = tf.reshape(tf.slice(self._location_vects, slice_input,
+                    tf.constant(np.array([1, 2]))), [2])
+
+            # To compute the alpha and sigma values based on iteration
+            # number
+            learning_rate_op = tf.subtract(1.0, tf.div(self._iter_input, self._n_iterations))
+            _alpha_op = tf.multiply(alpha, learning_rate_op)
+            _sigma_op = tf.multiply(sigma, learning_rate_op)
+
+            # Construct the op that will generate a vector with learning
+            # rates for all neurons, based on iteration number and location
+            # wrt BMU.
+            bmu_distance_squares = tf.reduce_sum(tf.pow(tf.subtract(
+                    self._location_vects, tf.stack(
+                        [bmu_loc for _ in range(m * n)])), 2), 1)
+            neighbourhood_func = tf.exp(tf.negative(tf.div(tf.cast(
+                    bmu_distance_squares, "float32"), tf.pow(_sigma_op, 2))))
+            learning_rate_op = tf.multiply(_alpha_op, neighbourhood_func)
+
+            # Finally, the op that will use learning_rate_op to update
+            # the weightage vectors of all neurons based on a particular
+            # input
+            learning_rate_multiplytiplier = tf.stack([tf.tile(tf.slice(
+                    learning_rate_op, np.array([i]),np.array([1])), [dim])
+                        for i in range(m * n)])
+            weightage_delta = tf.multiply(learning_rate_multiplytiplier,
+                    tf.subtract(tf.stack([self._vect_input for _ in range(m * n)]),
+                        self._weightage_vects))
+            new_weightages_op = tf.add(self._weightage_vects, weightage_delta)
+            self._training_op = tf.assign(self._weightage_vects, new_weightages_op)
+
+            # INITIALIZE SESSION
+            self._sess = tf.Session()
+
+            # INITIALIZE VARIABLES
+            init_op = tf.global_variables_initializer()
+            self._sess.run(init_op)
+
+    def _neuron_locations(self, m, n):
+        """
+        Yields one by one the 2-D locations of the individual neurons
+        in the SOM.
+        """
+        # Nested iterations over both dimensions
+        # to generate all 2-D locations in the map
+        for i in range(m):
+            for j in range(n):
+                yield np.array([i, j])
+
+    def train(self, input_vects):
+        """
+        Trains the SOM.
+        'input_vects' should be an iterable of 1-D NumPy arrays with
+        dimensionality as provided during initialization of this SOM.
+        Current weightage vectors for all neurons(initially random) are
+        taken as starting conditions for training.
+        """
+
+        # Training iterations
+        for iter_no in range(self._n_iterations):
+            # Train with each vector one by one
+            for input_vect in input_vects:
+                self._sess.run(self._training_op,
+                               feed_dict={self._vect_input: input_vect,
+                                          self._iter_input: iter_no})
+
+        # Store a centroid grid for easy retrieval later on
+        centroid_grid = [[] for _ in range(self._m)]
+        self._weightages = list(self._sess.run(self._weightage_vects))
+        self._locations = list(self._sess.run(self._location_vects))
+        for i, loc in enumerate(self._locations):
+            centroid_grid[loc[0]].append(self._weightages[i])
+        self._centroid_grid = centroid_grid
+
+        self._trained = True
+
+    def get_centroids(self):
+        """
+        Returns a list of 'm' lists, with each inner list containing
+        the 'n' corresponding centroid locations as 1-D NumPy arrays.
+        """
+        if not self._trained:
+            raise ValueError("SOM not trained yet")
+        return self._centroid_grid
+
+    def map_vects(self, input_vects):
+        """
+        Maps each input vector to the relevant neuron in the SOM
+        grid.
+        'input_vects' should be an iterable of 1-D NumPy arrays with
+        dimensionality as provided during initialization of this SOM.
+        Returns a list of 1-D NumPy arrays containing (row, column)
+        info for each input vector(in the same order), corresponding
+        to mapped neuron.
+        """
+
+        if not self._trained:
+            raise ValueError("SOM not trained yet")
+
+        to_return = []
+        for vect in input_vects:
+            min_index = min([i for i in range(len(self._weightages))],
+                            key=lambda x: np.linalg.norm(vect -
+                                                         self._weightages[x]))
+            to_return.append(self._locations[min_index])
+
+        return to_return
+
+
+# Test SOM Network
+def test_som_with_color_data(xdim=20, ydim=10, iterations=100):
+    # Training inputs for RGB colors
+    colors = np.random.uniform(0, 1, (xdim * ydim, 3))
+    print("Test generated")
+
+    som = SOM(xdim, ydim, 3, iterations)
+    print("SOM created")
+
+    print("SOM training ...")
+    som.train(colors)
+    print("SOM training done")
+
+    # Get output grid
+    image_grid = som.get_centroids()
+
+    plt.figure(1)
+
+    plt.subplot(121)
+    plt.title("Original random colors")
+
+    colors_2d = np.zeros((xdim, ydim, 3))
+    for x in range(xdim):
+        for y in range(ydim):
+            colors_2d[x][y] = colors[x + xdim * y]
+    plt.imshow(colors_2d)
+
+    plt.subplot(122)
+    plt.title("SOM processed colors")
+    plt.imshow(image_grid)
+    plt.show()
 
 
 if __name__ == "__main__":
-    SOMNetwork.test_som_with_color_data(2000)
+    test_som_with_color_data()
