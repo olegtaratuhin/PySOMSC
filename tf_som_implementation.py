@@ -84,7 +84,7 @@ class Som(object):
             # index
             slice_input = tf.pad(tf.reshape(bmu_index, [1]), np.array([[0, 1]]))
             bmu_loc = tf.reshape(tf.slice(self._location_vects, slice_input,
-                    tf.constant(np.array([1, 2]))), [2])
+                    tf.constant(np.array([1, 2]), dtype=tf.int64)), [2])
 
             # To compute the alpha and sigma values based on iteration
             # number
@@ -165,7 +165,7 @@ class Som(object):
         the 'n' corresponding centroid locations as 1-D NumPy arrays.
         """
         if not self._trained:
-            raise ValueError("SOM not trained yet")
+            raise ValueError("SOM is not trained yet")
         return self._centroid_grid
 
     def map_vects(self, input_vects):

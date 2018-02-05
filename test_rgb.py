@@ -7,6 +7,14 @@ from tf_som_implementation import Som
 
 # Test SOM Network
 def test(xdim=20, ydim=10, iterations=100):
+    """
+    Testing on rgb generated randomly by numpy
+
+    :param xdim: X-dimension of som
+    :param ydim: Y-dimension of som
+    :param iterations: number of iterations
+    :return: None
+    """
     # Training inputs for RGB colors
     colors = np.random.uniform(0, 1, (xdim * ydim, 3))
     print("Test generated")
@@ -18,7 +26,7 @@ def test(xdim=20, ydim=10, iterations=100):
     som.train(colors)
     print("SOM training done")
 
-    # Get output grid
+    # Get output grid of som
     image_grid = som.get_centroids()
 
     plt.figure(1)
@@ -27,6 +35,8 @@ def test(xdim=20, ydim=10, iterations=100):
     plt.title("Original random colors")
 
     colors_2d = np.zeros((xdim, ydim, 3))
+    # rearrange colors to a (xdim, ydim, 3) shape in order
+    # to be displayed correctly on a grid
     for x in range(xdim):
         for y in range(ydim):
             colors_2d[x][y] = colors[x + xdim * y]
