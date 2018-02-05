@@ -1,8 +1,8 @@
 # basic imports for arrays and plot
-import numpy
+import numpy as np
+from matplotlib import pyplot as plt
 # import self-organised map implementation
 from minisom import MiniSom
-from pylab import imshow, show
 
 
 def test_minisom():
@@ -14,20 +14,35 @@ def test_minisom():
     """
     # test parameters
     dim = 20
-    iterations = 2500
+    iterations = 250
 
-    # make sure the data is generated correctly
-    rgb_random_data = numpy.random.uniform(0, 1, (iterations, 3))
-    imshow(rgb_random_data)
-    show()
+    rgb_random_data = np.random.uniform(0, 1, (dim * dim, 3))
 
-    som = MiniSom(dim, dim, 3, sigma=dim/4, learning_rate=0.5)
+    som = MiniSom(dim, dim, 3, sigma=1.0, learning_rate=5)
+    som.random_weights_init(rgb_random_data)
     print("Training...")
     som.train_random(rgb_random_data, iterations)
     print("...ready!")
+    print("Shape is " + str(som.get_weights().shape))
+    print(som.get_weights())
+    output_rgb = plt.imshow(som.get_weights())
 
-    imshow(som.get_weights())
-    show()
+    # Show figure
+    plt.figure(1)
+
+    # original subplot
+    plt.subplot(121)
+    plt.title("Original array")
+    plt.imshow(rgb_random_data)
+
+    # SOM result subplot
+    plt.subplot(122)
+    plt.title("SOM result")
+    plt.imshow(output_rgb)
+
+    plt.tight_layout()
+    plt.show()
 
 
-test_minisom()
+# if __name__ == "__main__":
+#    test_minisom()
