@@ -1,4 +1,6 @@
-# file contains implementation of SOM using tensorflow
+# file contains implementation of SOM using tensorflow, based on
+# https://codesachin.wordpress.com/2015/11/28/self-organizing-maps-with-googles-tensorflow/
+# but slightly modified to match up to date version of tensorflow
 import numpy as np
 import tensorflow as tf
 
